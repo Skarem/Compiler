@@ -22,7 +22,8 @@ private:
     void DisplayTokens(std::vector<std::unique_ptr<TOKEN>>& tokens);
 
     int TokenizeLine(std::string& line,
-                     std::vector<std::unique_ptr<TOKEN>>& tokens);
+                     std::vector<std::unique_ptr<TOKEN>>& tokens, bool& comment,
+                     int row);
 };
 
 #endif

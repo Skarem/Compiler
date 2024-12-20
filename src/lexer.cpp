@@ -17,7 +17,7 @@ bool Lexer::IsIdentifierNum(char c) { return std::isdigit(c); }
 int Lexer::TokenizeFile(const std::string& filename,
                         std::vector<std::unique_ptr<TOKEN>>& tokens)
 {
-    std::cout << "Trying to open and read: " << filename << std::endl;
+    // std::cout << "Trying to open and read: " << filename << std::endl;
 
     std::ifstream file(filename);
     if (!file.is_open())
@@ -25,13 +25,21 @@ int Lexer::TokenizeFile(const std::string& filename,
         perror(("Error while opening file " + filename).c_str());
     }
 
+    bool comment = false;
     std::string line;
+    int row = 1;
     while (getline(file, line))
     {
-        if (TokenizeLine(line, tokens) > 0)
+        if (TokenizeLine(line, tokens, comment, row++) > 0)
         {
             return 1;
         }
+    }
+
+    if (comment)
+    {
+        std::cerr << "Unterminated multi-line comment" << std::endl;
+        return 1;
     }
 
     if (file.bad())
@@ -88,7 +96,8 @@ void Lexer::DisplayTokens(std::vector<std::unique_ptr<TOKEN>>& tokens)
 }
 
 int Lexer::TokenizeLine(std::string& line,
-                        std::vector<std::unique_ptr<TOKEN>>& tokens)
+                        std::vector<std::unique_ptr<TOKEN>>& tokens,
+                        bool& comment, int row)
 {
     size_t start = 0;
 
@@ -96,18 +105,20 @@ int Lexer::TokenizeLine(std::string& line,
     {
         char current = line[start];
 
-        if (line.length() >= 2 && line.substr(0, 2) == "//")
+        // Skip single-line comment
+        if (!comment && line.length() - start >= 2 &&
+            line.substr(start, 2) == "//")
         {
             // std::cout << "Skipping comment line" << std::endl;
             return 0;
         }
         // Skip whitespace
-        else if (std::isspace(current))
+        else if (!comment && std::isspace(current))
         {
             ++start;
             continue;
         }
-        else if (IsIdentifierChar(current))
+        else if (!comment && IsIdentifierChar(current))
         {
             size_t end = start;
 
@@ -136,7 +147,7 @@ int Lexer::TokenizeLine(std::string& line,
             start = end;
         }
         // If it starts with a number
-        else if (IsIdentifierNum(current))
+        else if (!comment && IsIdentifierNum(current))
         {
             size_t end = start;
 
@@ -163,17 +174,37 @@ int Lexer::TokenizeLine(std::string& line,
         }
         else
         {
-            if (auto token = TOKEN_TYPE_MAP.find(line[start]);
-                token != TOKEN_TYPE_MAP.end())
+            // Check for multi-line comments
+            if (line.length() - start >= 2 && line.substr(start, 2) == "/*")
             {
-                // std::cout << "TOKEN: " << token->first << std::endl;
-                tokens.push_back(std::make_unique<TOKEN>(token->second));
+                // std::cout << "Start multi-line comment" << std::endl;
+                comment = true;
+                ++start;
             }
-            else
+            else if (line.length() - start >= 2 &&
+                     line.substr(start, 2) == "*/")
             {
-                std::cerr << "Invalid token error: \'" << line[start]
-                          << "\' is not a token" << std::endl;
-                return 1;
+                // std::cout << "End multi-line comment" << std::endl;
+                comment = false;
+                ++start;
+            }
+            else if (!comment)
+            {
+                // Check for singular tokens
+                if (auto token = TOKEN_TYPE_MAP.find(line[start]);
+                    token != TOKEN_TYPE_MAP.end())
+                {
+                    // std::cout << "TOKEN: " << token->first << std::endl;
+                    tokens.push_back(std::make_unique<TOKEN>(token->second));
+                }
+                // Invalid token
+                else
+                {
+                    std::cerr << "Invalid token error (row: " << row
+                              << ", col: " << start << "): \'" << line[start]
+                              << "\' is not a token" << std::endl;
+                    return 1;
+                }
             }
 
             ++start;
